@@ -1,0 +1,42 @@
+#!/usr/bin/env bash
+# Focus Bouncer — one command starts a focus session.
+#
+#   ./focus                 camera on, session starts after a 3-2-1
+#   ./focus --demo          no camera; keyboard triggers only (always works)
+#   ./focus --video take.mp4  run detection on a recorded video instead of the camera
+#   ./focus --sentence 60   sentence length in seconds (default 1500 = 25 min)
+#   ./focus --no-open       start the server only; open the printed URL yourself
+set -euo pipefail
+cd "$(dirname "$0")"
+
+MP_VERSION="1.1.1"
+MP_CDN="https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${MP_VERSION}"
+MODELS="https://storage.googleapis.com/mediapipe-models"
+
+fetch() {  # url dest
+  if [ ! -s "$2" ]; then
+    echo "  downloading $(basename "$2")"
+    mkdir -p "$(dirname "$2")"
+    curl -fsSL --retry 2 -o "$2.part" "$1"
+    mv "$2.part" "$2"
+  fi
+}
+
+if [ ! -s vendor/.ok2-${MP_VERSION} ]; then
+  echo "First run: fetching MediaPipe ${MP_VERSION} + models (~60 MB, one time)…"
+  fetch "${MP_CDN}/vision_bundle.mjs"                    vendor/mediapipe/vision_bundle.mjs
+  fetch "${MP_CDN}/wasm/vision_wasm_internal.js"         vendor/mediapipe/wasm/vision_wasm_internal.js
+  fetch "${MP_CDN}/wasm/vision_wasm_internal.wasm"       vendor/mediapipe/wasm/vision_wasm_internal.wasm
+  fetch "${MP_CDN}/wasm/vision_wasm_module_internal.js"     vendor/mediapipe/wasm/vision_wasm_module_internal.js
+  fetch "${MP_CDN}/wasm/vision_wasm_module_internal.wasm"   vendor/mediapipe/wasm/vision_wasm_module_internal.wasm
+  fetch "${MP_CDN}/wasm/vision_wasm_nosimd_internal.js"   vendor/mediapipe/wasm/vision_wasm_nosimd_internal.js
+  fetch "${MP_CDN}/wasm/vision_wasm_nosimd_internal.wasm" vendor/mediapipe/wasm/vision_wasm_nosimd_internal.wasm
+  fetch "${MODELS}/face_landmarker/face_landmarker/float16/1/face_landmarker.task"      vendor/models/face_landmarker.task
+  fetch "${MODELS}/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task"      vendor/models/hand_landmarker.task
+  fetch "${MODELS}/object_detector/efficientdet_lite2/float16/1/efficientdet_lite2.tflite" vendor/models/efficientdet_lite2.tflite
+  touch vendor/.ok2-${MP_VERSION}
+fi
+
+PY=python3
+command -v "$PY" >/dev/null || { echo "python3 not found (macOS: xcode-select --install)"; exit 1; }
+exec "$PY" server.py "$@"
