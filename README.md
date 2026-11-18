@@ -1,4 +1,4 @@
-# Focus Bouncer 🚨
+# Focus Jail 🚨
 
 **Reach for your phone during a focus session and your laptop arrests it.**
 
@@ -7,14 +7,14 @@ Prison bars drop over the real phone on your webcam feed, a police mugshot of th
 Everything runs on your laptop. No account, no upload, no cloud.
 
 ```bash
-git clone https://github.com/theChitranshM/focus-bouncer && cd focus-bouncer && ./focus
+git clone https://github.com/theChitranshM/focus-jail && cd focus-jail && ./focus
 ```
 
 ---
 
 ## What makes it different
 
-Most "AI yells at me when I touch my phone" builds play a sound when a phone shows up on camera. Focus Bouncer does a few more things:
+Most "AI yells at me when I touch my phone" builds play a sound when a phone shows up on camera. Focus Jail does a few more things:
 
 - **AR cage that tracks the phone.** The bars are drawn onto the real phone in the live feed and follow it as it moves.
 - **A mugshot of your phone.** The phone is cropped from the frame in the moment of the crime and placed against a height chart (in inches, because it's a phone), with a booking number and the charge.
@@ -28,7 +28,7 @@ Most "AI yells at me when I touch my phone" builds play a sound when a phone sho
   | Lifted it off its resting spot | Moving a phone without a permit |
   | Stared into your lap for 1.6 s+ | Suspicious downward glancing |
 
-- **Sentence and jailbreak.** Exile is a real timer, 25 minutes by default (one pomodoro). If the phone comes back into view early, the sentence gets +20%.
+- **Sentence and jailbreak.** Exile is a real timer, 25 minutes by default (one pomodoro). If you start using the phone again early (it's confirmed on camera *and* in your hand or in your eyeline), the sentence gets +20%.
 - **Case file.** A 4:5 card at the end of the session with arrests, clean focus time, longest streak, fastest reaction, the mugshots and a verdict.
 
 ## How detection works
@@ -42,6 +42,7 @@ Three signals feed one judge. Each signal comes from a MediaPipe model, running 
 | **Hands** | Hand Landmarker (21 points × 2 hands) | whether a fingertip is inside the phone's box |
 
 - **Hold windows filter out glitches.** A rule has to stay true for 120–220 ms (1.6 s for the lap stare) before it fires, so a one-frame glitch can't arrest you.
+- **One detection is never enough.** A stray hit (a pillow button, a dark rectangle) can't arrest you or cause a jailbreak: the phone has to be detected 2–3 times in about a second, and a jailbreak also needs your hand on it or your eyes on it.
 - **Grabbing the phone still counts.** Your hand often hides the phone from the object detector as you grab it, so the judge keeps the last-known box for about 1 s.
 - **Your "screen face" is learned automatically.** The 3-2-1 countdown samples how your eyes look while you look at the screen.
 - **Calibration is optional.** Press **C** once to teach it your "phone face" too. It's saved in the browser.

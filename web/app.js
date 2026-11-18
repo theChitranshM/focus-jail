@@ -1,4 +1,4 @@
-// Focus Bouncer: the phone gets arrested.
+// Focus Jail: the phone gets arrested.
 // focus → (reach) → arrest: cage + mugshot + Exhibit A → custody → (phone leaves) → exiled, serving a sentence
 //       → (phone shows up early) → jailbreak, +5:00 → custody … → released → focus.   Q = case file, R = reset.
 import { CONFIG, CHARGES } from "./config.js";
@@ -36,7 +36,7 @@ async function boot() {
   resize();
   addEventListener("resize", resize);
   try { sfx.audio(); } catch {}
-  showCenter("FOCUS BOUNCER", "waking up the bouncer…", "");
+  showCenter("FOCUS JAIL", "unlocking the cells…", "");
   requestAnimationFrame(render);
 
   if (!DEMO) {
@@ -57,7 +57,7 @@ async function boot() {
     }
     if (camReady) {
       try {
-        await det.init((s) => showCenter("FOCUS BOUNCER", s, ""), {
+        await det.init((s) => showCenter("FOCUS JAIL", s, ""), {
           phoneModel: params.get("phonemodel") || undefined,
           phoneDelegates: params.get("phonegpu") ? ["GPU", "CPU"] : undefined,
         });
@@ -118,7 +118,7 @@ function setState(s) {
   $("clockLabel").textContent = { arrest: "ARRESTED", custody: "IN CUSTODY" }[s] || "FOCUSED";
   if (s === "ready") {
     const how = DEMO || !detReady ? "demo mode · SPACE arrests · E exiles" : det.calib ? "eyes calibrated · camera armed" : "camera armed · press C once to calibrate your eyes";
-    showCenter("FOCUS BOUNCER", "phones are not on the list.", `ENTER to start · ${how}`);
+    showCenter("FOCUS JAIL", "no phones beyond this point.", `ENTER to start · ${how}`);
   }
 }
 
@@ -144,7 +144,7 @@ async function startCountdown() {
   const now = performance.now();
   S.t0 = now; S.startedAt = new Date(); S.streakStart = now; S.lastTick = now;
   setState("focus");
-  logEvent("SESSION START", detReady ? "camera armed · phones not on the list" : "demo mode", { cls: "ok" });
+  logEvent("SESSION START", detReady ? "camera armed · no phones beyond this point" : "demo mode", { cls: "ok" });
 }
 
 function arrest(rule, source, firstAt) {
@@ -209,7 +209,7 @@ function arrest(rule, source, firstAt) {
 function watchCustody(now) {
   if (S.state !== "custody" || !S.signals) return;
   const sig = S.signals;
-  const gone = !sig.visible && !sig.handOnPhone && sig.look < 0.45;
+  const gone = !sig.confirmed && !sig.handOnPhone && sig.look < 0.45;
   if (!gone) { S.goneSince = null; return; }
   if (S.goneSince == null) S.goneSince = now;
   if (sig.face && now - S.goneSince >= CONFIG.exileAbsentMs && now - S.custodyAt >= CONFIG.minCustodyMs) exile("cam");
@@ -221,6 +221,7 @@ function exile(source) {
   const resuming = S.sentenceEnd != null;
   if (!resuming) { S.sentenceEnd = now + CONFIG.sentenceSec * 1000; S.sentenceStartedAt = now; }
   S.cage = null; S.jbSince = null;
+  det.forgetPhone();
   setState("sentence");
   sfx.slam();
   const left = (S.sentenceEnd - now) / 1000;
@@ -233,9 +234,9 @@ function exile(source) {
 function watchSentence(now) {
   if (S.state !== "sentence") return;
   const sig = S.signals;
-  if (sig && (sig.visible || sig.handOnPhone)) {
+  if (sig && sig.using) {
     if (S.jbSince == null) S.jbSince = now;
-    if (now - S.jbSince > 350) jailbreak("cam");
+    if (now - S.jbSince >= CONFIG.jailbreakHoldMs) jailbreak("cam");
   } else S.jbSince = null;
 }
 
@@ -275,7 +276,7 @@ function endSession() {
   $("booking").hidden = true; closeReplay(); hideBanner(); hideCenter();
   const reacts = S.arrests.filter((a) => a.source === "cam" && a.reactMs != null).map((a) => a.reactMs);
   const stats = {
-    caseId: `#FB-${S.session}`, ended: new Date(),
+    caseId: `#FJ-${S.session}`, ended: new Date(),
     sessionSec: (now - S.t0) / 1000, cleanSec: S.cleanMs / 1000, arrests: S.arrests, jailbreaks: S.jailbreaks,
     servedSec: S.servedMs / 1000, longestStreakSec: S.longestStreakMs / 1000, fastestMs: reacts.length ? Math.min(...reacts) : null,
   };
@@ -317,7 +318,7 @@ async function calibrate() {
   sfx.beep(true);
   setState("ready");
   if (err) showCenter("CALIBRATION FAILED", err, "C to try again · ENTER to start anyway");
-  else { logEvent("CALIBRATED", "eyes learned", { cls: "ok" }); showCenter("CALIBRATED", "the bouncer knows what your phone face looks like.", "ENTER to start"); }
+  else { logEvent("CALIBRATED", "eyes learned", { cls: "ok" }); showCenter("CALIBRATED", "the guards know what your phone face looks like.", "ENTER to start"); }
 }
 
 // ---------------------------------------------------------------- render
@@ -481,7 +482,8 @@ function updateDebugPanel() {
     `face ${(t.face || 0).toFixed(0)} · hands ${(t.hand || 0).toFixed(0)} · phone ${(t.phone || 0).toFixed(0)} ms (every ${(det.phonePeriod || 0).toFixed(0)} ms)<br>` +
     `eyes on phone ${(s.look ?? 0).toFixed(2)}${bar(s.look ?? 0, (s.look ?? 0) >= CONFIG.lookOn)}` +
     `phone ${s.visible ? (s.phoneScore * 100).toFixed(0) + "%" : "—"}${bar(s.phoneScore || 0, s.visible)}` +
-    `hand on phone ${s.handOnPhone ? "YES" : "no"} · moved ${s.moved ? "YES" : "no"} · face ${s.face ? "yes" : "no"}`;
+    `hand on phone ${s.handOnPhone ? "YES" : "no"} · moved ${s.moved ? "YES" : "no"} · face ${s.face ? "yes" : "no"}<br>` +
+    `phone confirmed ${s.confirmed ? "YES" : "no"} · in use ${s.using ? "YES" : "no"}`;
 }
 
 function handBox(h) { let x0 = 1, y0 = 1, x1 = 0, y1 = 0; for (const p of h) { x0 = Math.min(x0, p.x); y0 = Math.min(y0, p.y); x1 = Math.max(x1, p.x); y1 = Math.max(y1, p.y); } return { x: x0, y: y0, w: x1 - x0, h: y1 - y0 }; }

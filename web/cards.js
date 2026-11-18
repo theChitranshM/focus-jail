@@ -94,7 +94,7 @@ export function drawMugshot({ crop, booking, when, charge, priors, cropKind }) {
   // Booking placard.
   g.fillStyle = "#0d0e10"; g.fillRect(0, PH, W, H - PH);
   g.fillStyle = "#f4f4f2";
-  g.font = `900 30px ${SANS}`; g.fillText("FOCUS BOUNCER P.D.", 36, PH + 52);
+  g.font = `900 30px ${SANS}`; g.fillText("FOCUS POLICE DEPT.", 36, PH + 52);
   g.font = `bold 26px ${MONO}`; g.textAlign = "right"; g.fillText(`#${String(booking).padStart(4, "0")}`, W - 36, PH + 52); g.textAlign = "left";
   g.fillStyle = "#9aa0a8"; g.font = `22px ${MONO}`;
   g.fillText(`${fmtDate(when)}  ${fmtClock(when)}`, 36, PH + 92);
@@ -167,6 +167,6 @@ export function drawCaseFile(s) {
   g.textAlign = "left";
   rotatedStamp(g, s.arrests.length ? "GUILTY" : "CLEAN", W - 240, 330, 62, s.arrests.length ? "#c4161c" : "#1b7f3b");
   g.fillStyle = "#8a7444"; g.font = `20px ${MONO}`;
-  g.fillText("focus-bouncer", 60, H - 22);
+  g.fillText("github.com/theChitranshM/focus-jail", 60, H - 22);
   return c;
 }

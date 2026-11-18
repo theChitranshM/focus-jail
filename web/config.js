@@ -1,4 +1,4 @@
-// Every number the bouncer uses lives here. Tune for your desk, not in app.js.
+// Every number the jail uses lives here. Tune for your desk, not in app.js.
 export const CONFIG = {
   sentenceSec: 25 * 60,       // how long the phone is exiled (one pomodoro)
   jailbreakPenalty: 0.2,      // phone shows up mid-sentence: +20% of the sentence (5:00 on a 25:00)
@@ -13,6 +13,9 @@ export const CONFIG = {
   },
   stareRule: true,            // turn off if you study from paper notes on your desk
   phoneScore: 0.32,           // object detector confidence for "cell phone"
+  confirmScore: 0.45,         // a detection only counts toward confirmation above this
+  confirmWindowMs: 1200,      // 2 hits in this window = confirmed phone; 3 hits (+300 ms) = strong
+  jailbreakHoldMs: 300,       // "using it again" must hold this long during a sentence
   phoneMoveFrac: 0.07,        // how far (fraction of frame) counts as "lifted"
   phoneBoxPad: 0.18,          // grow the phone box by this much for the hand test
   lookOn: 0.62,               // look score (0 = screen, 1 = phone) that counts as "eyes on phone"

@@ -25,6 +25,7 @@ export class Detector {
     this.mode = null;         // "worker" | "main"
     this.delegates = {};
     this.workers = null;
+    this.hits = [];           // raw phone detections, for confirmation
   }
 
   // Two Web Workers run in parallel so the screen never stutters and the slow phone
@@ -112,6 +113,8 @@ export class Detector {
       this._lastPhoneRun = ts;
     }
     if (r.phone) {
+      this.hits.push({ ts, score: r.phone.score });
+      while (this.hits.length && ts - this.hits[0].ts > 3000) this.hits.shift();
       const box = r.phone.box;
       const prev = this.phone && ts - this.phone.seenAt < 400 ? this.phone.box : null;
       const k = 0.55; // smooth so the cage doesn't jitter
@@ -213,10 +216,18 @@ export class Detector {
     }
     const moved = !!(visible && this.rest && dist(center(f.phone.box), this.rest) > CONFIG.phoneMoveFrac);
 
+    // One detection can be a pillow button. Count real hits in a short window.
+    const hitsIn = (ms) => this.hits.filter((h) => ts - h.ts <= ms && h.score >= CONFIG.confirmScore).length;
+    const confirmed = hitsIn(CONFIG.confirmWindowMs) >= 2;
+    const confirmedStrong = hitsIn(CONFIG.confirmWindowMs + 300) >= 3;
+    // "Using it again": a confirmed phone that you're touching or looking at. A random object
+    // lying around (false positive) is never "used", so it can't cause a jailbreak.
+    const using = confirmedStrong && (handOnPhone || look >= CONFIG.lookOn);
+
     const conds = {
       possession: handOnPhone,
-      doomscroll: visible && look >= CONFIG.lookOn,
-      moved,
+      doomscroll: visible && confirmed && look >= CONFIG.lookOn,
+      moved: moved && confirmed,
       stare: CONFIG.stareRule && !!f.face && !visible && look >= CONFIG.stareOn,
     };
     let fired = null;
@@ -226,10 +237,12 @@ export class Detector {
       if (!fired && ts - this.since[rule] >= CONFIG.holdMs[rule]) fired = { rule, firstAt: this.since[rule] };
     }
     if (fired) this.since = {};
-    return { fired, signals: { look, visible, handOnPhone, moved, face: !!f.face, phoneScore: f.phone?.visible ? f.phone.score : 0 } };
+    return { fired, signals: { look, visible, confirmed, using, handOnPhone, moved, face: !!f.face, phoneScore: f.phone?.visible ? f.phone.score : 0 } };
   }
 
   forgetRest() { this.rest = null; this.restCandidate = null; this.since = {}; }
+  // The phone has left the building: drop its last box so a hand passing that spot means nothing.
+  forgetPhone() { this.phone = null; this.hits = []; this.forgetRest(); }
 }
 
 function featureVec(face) { return face ? [face.gazeDown, face.pitch / 30, face.blink] : null; }

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Focus Bouncer local server. Python standard library only.
+"""Focus Jail local server. Python standard library only.
 
 Serves the web app on 127.0.0.1, writes the session log (JSONL + CSV) and the
 mugshot / case-file PNGs into logs/<session>/, and opens the app window.
@@ -164,7 +164,10 @@ def open_app(url: str):
     if sys.platform == "darwin" and os.path.exists(CHROME):
         # `open` (LaunchServices), not the binary: macOS then asks camera permission for
         # Chrome itself instead of pinning it on whichever terminal ran ./focus.
-        profile = Path.home() / ".focus-bouncer-chrome"
+        profile = Path.home() / ".focus-jail-chrome"
+        old = Path.home() / ".focus-bouncer-chrome"  # pre-rename profile: keep its camera permission
+        if old.exists() and not profile.exists():
+            old.rename(profile)
         subprocess.Popen(
             ["open", "-na", "Google Chrome", "--args", f"--user-data-dir={profile}", f"--app={url}",
              "--autoplay-policy=no-user-gesture-required",
@@ -176,7 +179,7 @@ def open_app(url: str):
 
 
 def main():
-    ap = argparse.ArgumentParser(description="Focus Bouncer")
+    ap = argparse.ArgumentParser(description="Focus Jail")
     ap.add_argument("--port", type=int, default=8787)
     ap.add_argument("--demo", action="store_true", help="no camera, keyboard triggers only")
     ap.add_argument("--video", help="run detection on a video file instead of the camera")
@@ -212,7 +215,7 @@ def main():
     port = free_port(a.port)
     url = f"http://localhost:{port}/" + (f"?{urlencode(q)}" if q else "")
     srv = ThreadingHTTPServer(("127.0.0.1", port), Handler)
-    print(f"\n  FOCUS BOUNCER  →  {url}\n  logs → {LOGS}/<session>/   ctrl-c to stop\n", flush=True)
+    print(f"\n  FOCUS JAIL  →  {url}\n  logs → {LOGS}/<session>/   ctrl-c to stop\n", flush=True)
     if not a.no_open:
         threading.Timer(0.4, open_app, args=(url,)).start()
     try:

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Focus Bouncer — one command starts a focus session.
+# Focus Jail — one command starts a focus session.
 #
 #   ./focus                 camera on, session starts after a 3-2-1
 #   ./focus --demo          no camera; keyboard triggers only (always works)

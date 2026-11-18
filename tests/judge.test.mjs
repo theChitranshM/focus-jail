@@ -1,4 +1,4 @@
-// Tests the bouncer's judgement on synthetic frame sequences (no camera needed).
+// Tests the jail's judgement on synthetic frame sequences (no camera needed).
 //   node tests/judge.test.mjs
 import { Detector } from "../web/detector.js";
 import { CONFIG } from "../web/config.js";
@@ -22,10 +22,12 @@ function face(lookDown) { // lookDown 0 = screen, 1 = phone
 function run(script, { armedFrom = 0 } = {}) {
   const d = new Detector();
   d.baseline = { gazeDown: 0.15, pitch: 0, blink: 0.1 };
-  let fired = null, t = 1000, frames = 0, lastSignals = null;
+  let fired = null, t = 1000, frames = 0, lastSignals = null, usingSince = null, jailbreak = false;
   d.onFrame = (f) => {
     const j = d.judge(f, t >= armedFrom + 1000);
     lastSignals = j.signals;
+    // mirrors app.js watchSentence()
+    if (j.signals.using) { usingSince ??= t; if (t - usingSince >= CONFIG.jailbreakHoldMs) jailbreak = true; } else usingSince = null;
     if (j.fired && !fired) fired = { ...j.fired, at: t };
   };
   for (const [ms, frame] of script) {
@@ -33,10 +35,11 @@ function run(script, { armedFrom = 0 } = {}) {
       t += 33; frames++;
       const r = { capturedAt: t, face: frame.face ?? null, hands: frame.hands ?? [] };
       d._onResult(r);
-      if (frames % 3 === 0) d._onResult({ capturedAt: t, phone: frame.phone ?? null });
+      const ph = typeof frame.phone === "function" ? frame.phone(frames) : frame.phone;
+      if (frames % 7 === 0) d._onResult({ capturedAt: t, phone: ph ?? null }); // ~4 Hz, like the CPU worker
     }
   }
-  return { fired, signals: lastSignals, d };
+  return { fired, signals: lastSignals, d, jailbreak };
 }
 
 console.log("possession (the reach)");
@@ -86,6 +89,24 @@ console.log("false alarms");
   ok(!flick.fired, "a 2-frame tracking glitch does not fire");
   const disarmed = run([[600, { face: face(0), hands: [ON_PHONE], phone: { box: PHONE, score: 0.7 } }]], { armedFrom: 99999 });
   ok(!disarmed.fired, "nothing fires while not armed (countdown, sentence, grace)");
+}
+
+console.log("jailbreaks (Nov 17 bug: 6 false jailbreaks in 2 min)");
+{
+  const FP = { box: { x: 0.2, y: 0.15, w: 0.05, h: 0.06 }, score: 0.5 };       // a pillow button
+  const stray = run([[8000, { face: face(0.1), hands: [FAR_HAND], phone: (n) => (n % 140 === 0 ? FP : null) }]]);
+  ok(!stray.jailbreak, "a stray detection every few seconds does not jailbreak");
+  const decoy = run([[8000, { face: face(0.1), hands: [FAR_HAND], phone: FP }]]);
+  ok(!decoy.jailbreak, "a look-alike object detected constantly, untouched, does not jailbreak");
+  const wave = run([[4000, { face: face(0.1), hands: [hand(0.22, 0.18)], phone: (n) => (n % 140 === 0 ? FP : null) }]]);
+  ok(!wave.jailbreak, "a hand passing over a one-off detection does not jailbreak");
+  const back = run([[3000, { face: face(0.1), hands: [FAR_HAND] }], [1500, { face: face(0.3), hands: [ON_PHONE], phone: { box: PHONE, score: 0.7 } }]]);
+  ok(back.jailbreak, "the real phone back in your hand does jailbreak");
+  const scroll = run([[3000, { face: face(0.1) }], [1500, { face: face(1), phone: { box: { x: 0.45, y: 0.45, w: 0.12, h: 0.2 }, score: 0.75 } }]]);
+  ok(scroll.jailbreak, "the real phone held up and looked at does jailbreak");
+  const d = new Detector(); d.phone = { box: PHONE, score: 0.8, seenAt: 0 }; d.hits = [{ ts: 0, score: 0.8 }];
+  d.forgetPhone();
+  ok(d.phone === null && d.hits.length === 0, "exile forgets the phone's last box");
 }
 
 console.log("calibration");
