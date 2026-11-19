@@ -6,9 +6,16 @@ Prison bars drop over the real phone on your webcam feed, a police mugshot of th
 
 Everything runs on your laptop. No account, no upload, no cloud.
 
-```bash
-git clone https://github.com/theChitranshM/focus-jail && cd focus-jail && ./focus
-```
+## Try it in 60 seconds (Mac)
+
+1. Open **Terminal** (⌘ Space, type "Terminal").
+2. Paste this and press Enter:
+   ```bash
+   git clone https://github.com/theChitranshM/focus-jail && cd focus-jail && ./focus
+   ```
+3. Allow the camera when Chrome asks. Look at the screen for the 3-2-1, then try reaching for your phone.
+
+No camera handy? Run `./focus --demo` and press `Space` to get arrested anyway.
 
 ---
 
