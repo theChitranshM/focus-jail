@@ -27,8 +27,9 @@ export const CONFIG = {
   phoneModel: "efficientdet_lite2", // or efficientdet_lite0: faster, worse at small phones
   phoneWorkerDelegates: ["CPU"],     // CPU keeps the GPU free for face + hands
 
-  // Exile: the phone is gone from view this long, with your face back in frame
-  exileAbsentMs: 2500,
+  // Exile: you leave the frame (taking the phone away), then sit back down without it
+  exileAwayMs: 1500,          // out of frame at least this long
+  exileAbsentMs: 2000,        // then back in frame, no phone in sight, this long
   minCustodyMs: 1800,
   arrestShowMs: 4200,         // how long the booking (mugshot + Exhibit A) stays up
   cooldownMs: 1500,           // ignore triggers right after release

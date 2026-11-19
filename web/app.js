@@ -2,7 +2,7 @@
 // focus → (reach) → arrest: cage + mugshot + Exhibit A → custody → (phone leaves) → exiled, serving a sentence
 //       → (phone shows up early) → jailbreak, +5:00 → custody … → released → focus.   Q = case file, R = reset.
 import { CONFIG, CHARGES } from "./config.js";
-import { Detector } from "./detector.js";
+import { Detector, ExileWatch } from "./detector.js";
 import { drawMugshot, drawCaseFile, cropFrom, fmtClock, fmtDur } from "./cards.js";
 import * as sfx from "./sfx.js";
 
@@ -14,6 +14,7 @@ if (params.get("sentence")) CONFIG.sentenceSec = Math.max(5, +params.get("senten
 
 const cam = $("cam"), stage = $("stage"), g = stage.getContext("2d");
 const det = new Detector();
+const exileWatch = new ExileWatch();
 let detReady = false, camReady = false;
 
 const S = {
@@ -201,19 +202,15 @@ function arrest(rule, source, firstAt) {
     if (S.state !== "arrest") return;
     $("booking").hidden = true;
     closeReplay();
-    S.custodyAt = performance.now(); S.goneSince = null;
+    S.custodyAt = performance.now(); exileWatch.reset(S.custodyAt);
     setState("custody");
-    showBanner("TAKE THE PHONE OUTSIDE", "it waits there until its sentence is served", 0);
+    showBanner("WALK THE PHONE OUT OF FRAME", "leave it outside, then come back and sit down", 0);
   }, CONFIG.arrestShowMs);
 }
 
 function watchCustody(now) {
   if (S.state !== "custody" || !S.signals) return;
-  const sig = S.signals;
-  const gone = !sig.confirmed && !sig.handOnPhone && sig.look < 0.45;
-  if (!gone) { S.goneSince = null; return; }
-  if (S.goneSince == null) S.goneSince = now;
-  if (sig.face && now - S.goneSince >= CONFIG.exileAbsentMs && now - S.custodyAt >= CONFIG.minCustodyMs) exile("cam");
+  if (exileWatch.update(S.signals, now)) exile("cam");
 }
 
 function exile(source) {
@@ -254,9 +251,9 @@ function jailbreak(source) {
   const diag = source === "cam" ? { box: roundBox(sig.box), score: +(sig.phoneScore || 0).toFixed(2), hits: sig.hits, hand_on_phone: sig.handOnPhone, look: +(sig.look || 0).toFixed(2), decoys: det.decoys.length } : null;
   logEvent("JAILBREAK", `phone back in hand mid-sentence · +${fmtDur(penaltySec())}`, { cls: "bad", source, small: CONFIG.showSourceInLog ? (source === "cam" ? "cam" : "key") : "", extra: diag ? { diag } : {} });
   saveImage(`jailbreak-${String(S.jailbreaks).padStart(2, "0")}-evidence.png`, evidenceFrame(sig.box, `JAILBREAK #${S.jailbreaks}`));
-  S.custodyAt = performance.now(); S.goneSince = null;
+  S.custodyAt = performance.now(); exileWatch.reset(S.custodyAt);
   setState("custody");
-  showBanner("JAILBREAK ATTEMPT", `+${fmtDur(penaltySec())} added · take it back outside`, 0);
+  showBanner("JAILBREAK ATTEMPT", `+${fmtDur(penaltySec())} added · walk it back out of frame`, 0);
 }
 
 function release() {

@@ -1,6 +1,6 @@
 // Tests the jail's judgement on synthetic frame sequences (no camera needed).
 //   node tests/judge.test.mjs
-import { Detector } from "../web/detector.js";
+import { Detector, ExileWatch } from "../web/detector.js";
 import { CONFIG } from "../web/config.js";
 
 let fails = 0;
@@ -120,6 +120,26 @@ console.log("jailbreaks (Nov 17: 6 false, Nov 19: 9 false)");
   ok(scroll.jailbreak, "the real phone held up and scrolled does jailbreak");
   const d = new Detector(); d.startSentence(0); d.decoys = [FP.box]; d.endSentence();
   ok(d.decoys.length === 0 && !d.decoyMode, "release forgets decoys (the phone is allowed back)");
+}
+
+console.log("exile (Nov 19 photos: phone lowered out of view, never left)");
+{
+  // sig sequence at 30 fps → did it exile, and when?
+  const ex = (steps) => {
+    const w = new ExileWatch(); let t = 0; w.reset(0);
+    for (const [ms, sig] of steps) for (let k = 0; k < ms / 33; k++) { t += 33; if (w.update(sig, t)) return t; }
+    return null;
+  };
+  const here = { face: true, confirmed: false, handOnPhone: false };
+  const holding = { face: true, confirmed: true, handOnPhone: true };
+  const away = { face: false, confirmed: false, handOnPhone: false };
+  ok(ex([[2000, holding], [10000, here]]) === null, "phone lowered into your lap (you never left) is NOT exile");
+  ok(ex([[2000, holding], [3000, away], [3000, here]]) !== null, "walk out of frame, come back without it = exiled");
+  ok(ex([[2000, holding], [3000, away], [500, here], [3000, holding]]) === null, "come back still holding it = not exiled");
+  ok(ex([[2000, holding], [3000, away], [500, here], [1000, holding], [5000, here]]) === null, "…and hiding it after that still isn't exile");
+  ok(ex([[2000, holding], [600, away], [5000, here]]) === null, "ducking out of frame for half a second isn't leaving");
+  const t = ex([[2000, holding], [3000, away], [3000, here]]);
+  ok(t && t - 5000 >= CONFIG.exileAbsentMs, `waits ${CONFIG.exileAbsentMs} ms after you sit back down`);
 }
 
 console.log("calibration");

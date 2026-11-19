@@ -28,6 +28,7 @@ Most "AI yells at me when I touch my phone" builds play a sound when a phone sho
   | Lifted it off its resting spot | Moving a phone without a permit |
   | Stared into your lap for 1.6 s+ | Suspicious downward glancing |
 
+- **Exile means it actually left.** Walk out of frame with the phone and come back without it. Lowering it into your lap or under the desk doesn't count, and coming back still holding it doesn't either.
 - **Sentence and jailbreak.** Exile is a real timer, 25 minutes by default (one pomodoro). If the phone comes back into your hand early, the sentence gets +20%.
 - **Case file.** A 4:5 card at the end of the session with arrests, clean focus time, longest streak, fastest reaction, the mugshots and a verdict.
 

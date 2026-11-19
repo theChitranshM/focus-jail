@@ -290,3 +290,25 @@ function iou(a, b) {
   return i / (a.w * a.h + b.w * b.h - i || 1);
 }
 function loadCalib() { try { return JSON.parse(localStorage.getItem("fb.calib")); } catch { return null; } }
+
+// Exile = you physically took the phone away: you leave the frame, then come back
+// without it. Just lowering the phone out of view (lap, under the desk) is NOT exile.
+export class ExileWatch {
+  reset(now) { this.awaySince = null; this.wasAway = false; this.cleanSince = null; this.startedAt = now; }
+  // returns true on the frame the phone counts as exiled
+  update(sig, now) {
+    if (!sig.face) {                                   // you're out of frame
+      this.awaySince ??= now;
+      if (now - this.awaySince >= CONFIG.exileAwayMs) this.wasAway = true;
+      this.cleanSince = null;
+      return false;
+    }
+    this.awaySince = null;
+    const phoneHere = sig.confirmed || sig.handOnPhone;
+    if (phoneHere) { this.wasAway = false; this.cleanSince = null; return false; } // came back holding it
+    if (!this.wasAway) return false;
+    this.cleanSince ??= now;
+    return now - this.cleanSince >= CONFIG.exileAbsentMs && now - this.startedAt >= CONFIG.minCustodyMs;
+  }
+}
+
