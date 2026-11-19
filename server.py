@@ -130,6 +130,8 @@ class Handler(SimpleHTTPRequestHandler):
                 line = f"  {ev.get('time','')}  {ev.get('event',''):<12} {ev.get('detail','')}"
                 if ev.get("react_ms") not in (None, ""):
                     line += f"  ({ev['react_ms']} ms)"
+                if ev.get("diag"):
+                    line += f"  diag={json.dumps(ev['diag'], separators=(',', ':'))}"
                 print(line, flush=True)
                 return self._json({"ok": True})
             if p == "/api/image":

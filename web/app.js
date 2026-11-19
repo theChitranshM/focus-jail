@@ -194,6 +194,7 @@ function arrest(rule, source, firstAt) {
     const tag = source === "cam" ? `cam ${rec.reactMs}ms` : "key";
     logEvent(`ARREST #${n}`, ruleShort(rule), { cls: "bad", source, reactMs: rec.reactMs, small: CONFIG.showSourceInLog ? tag : "" });
     saveImage(`mugshot-${String(n).padStart(2, "0")}.png`, mug);
+    saveImage(`arrest-${String(n).padStart(2, "0")}-evidence.png`, evidenceFrame(box, `ARREST #${n} · ${ruleShort(rule)}`));
   }));
 
   setTimeout(() => {
@@ -221,7 +222,7 @@ function exile(source) {
   const resuming = S.sentenceEnd != null;
   if (!resuming) { S.sentenceEnd = now + CONFIG.sentenceSec * 1000; S.sentenceStartedAt = now; }
   S.cage = null; S.jbSince = null;
-  det.forgetPhone();
+  det.startSentence(now); // phone is gone: anything still "seen" as a phone now is a decoy
   setState("sentence");
   sfx.slam();
   const left = (S.sentenceEnd - now) / 1000;
@@ -249,7 +250,10 @@ function jailbreak(source) {
   S.cage = { box: f?.phone && f.phone.age < 1500 ? f.phone.box : null, kind: "phone", dropT: performance.now() };
   flash();
   sfx.alarm();
-  logEvent("JAILBREAK", `phone spotted mid-sentence · +${fmtDur(penaltySec())}`, { cls: "bad", source, small: CONFIG.showSourceInLog ? (source === "cam" ? "cam" : "key") : "" });
+  const sig = S.signals || {};
+  const diag = source === "cam" ? { box: roundBox(sig.box), score: +(sig.phoneScore || 0).toFixed(2), hits: sig.hits, hand_on_phone: sig.handOnPhone, look: +(sig.look || 0).toFixed(2), decoys: det.decoys.length } : null;
+  logEvent("JAILBREAK", `phone back in hand mid-sentence · +${fmtDur(penaltySec())}`, { cls: "bad", source, small: CONFIG.showSourceInLog ? (source === "cam" ? "cam" : "key") : "", extra: diag ? { diag } : {} });
+  saveImage(`jailbreak-${String(S.jailbreaks).padStart(2, "0")}-evidence.png`, evidenceFrame(sig.box, `JAILBREAK #${S.jailbreaks}`));
   S.custodyAt = performance.now(); S.goneSince = null;
   setState("custody");
   showBanner("JAILBREAK ATTEMPT", `+${fmtDur(penaltySec())} added · take it back outside`, 0);
@@ -261,6 +265,7 @@ function release() {
   S.sentenceEnd = null; S.sentenceStartedAt = null;
   S.graceUntil = now + 20000; // 20 s to bring it back and park it without getting re-arrested
   det.forgetRest();
+  det.endSentence();
   setState("focus");
   sfx.release();
   logEvent("RELEASED", "sentence served · phone may return", { cls: "ok" });
@@ -298,6 +303,7 @@ function reset() {
     sentenceEnd: null, sentenceStartedAt: null, custodyAt: 0, goneSince: null, jbSince: null, cooldownUntil: 0, graceUntil: 0, cage: null,
   });
   det.forgetRest();
+  det.endSentence();
   $("nArrests").textContent = "0"; $("nBreaks").textContent = "0";
   $("logList").innerHTML = "";
   $("booking").hidden = true; $("casefile").hidden = true; hideBanner();
@@ -483,7 +489,7 @@ function updateDebugPanel() {
     `eyes on phone ${(s.look ?? 0).toFixed(2)}${bar(s.look ?? 0, (s.look ?? 0) >= CONFIG.lookOn)}` +
     `phone ${s.visible ? (s.phoneScore * 100).toFixed(0) + "%" : "—"}${bar(s.phoneScore || 0, s.visible)}` +
     `hand on phone ${s.handOnPhone ? "YES" : "no"} · moved ${s.moved ? "YES" : "no"} · face ${s.face ? "yes" : "no"}<br>` +
-    `phone confirmed ${s.confirmed ? "YES" : "no"} · in use ${s.using ? "YES" : "no"}`;
+    `phone confirmed ${s.confirmed ? "YES" : "no"} · in hand ${s.using ? "YES" : "no"} · decoys ${s.decoys ?? 0}`;
 }
 
 function handBox(h) { let x0 = 1, y0 = 1, x1 = 0, y1 = 0; for (const p of h) { x0 = Math.min(x0, p.x); y0 = Math.min(y0, p.y); x1 = Math.max(x1, p.x); y1 = Math.max(y1, p.y); } return { x: x0, y: y0, w: x1 - x0, h: y1 - y0 }; }
@@ -505,7 +511,7 @@ const plural = (n, w) => `${n} ${w}${n === 1 ? "" : "s"}`;
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const ruleShort = (r) => ({ possession: "hand on phone", doomscroll: "eyes on phone", moved: "phone lifted", stare: "eyes down", manual: "caught" }[r] || r);
 
-function logEvent(event, detail, { cls = "", source = "", reactMs = null, small = "" } = {}) {
+function logEvent(event, detail, { cls = "", source = "", reactMs = null, small = "", extra = {} } = {}) {
   const d = new Date();
   const li = document.createElement("li");
   li.className = cls;
@@ -516,10 +522,30 @@ function logEvent(event, detail, { cls = "", source = "", reactMs = null, small 
   if (!S.session) return;
   post("/api/event", { session: S.session, event: {
     time: fmtClock(d, true), iso: d.toISOString(), event, detail, source, react_ms: reactMs ?? "",
-    session_s: S.t0 ? ((performance.now() - S.t0) / 1000).toFixed(1) : "0",
+    session_s: S.t0 ? ((performance.now() - S.t0) / 1000).toFixed(1) : "0", ...extra,
   } });
 }
-function saveImage(name, canvas) { if (S.session) post("/api/image", { session: S.session, name, png: canvas.toDataURL("image/png") }); }
+const roundBox = (b) => b ? { x: +b.x.toFixed(3), y: +b.y.toFixed(3), w: +b.w.toFixed(3), h: +b.h.toFixed(3) } : null;
+
+// What the camera saw at the moment of a decision: the frame, the box that fired, and every
+// learned decoy. Saved next to the log so a bad call can be diagnosed from a file.
+function evidenceFrame(box, label) {
+  if (!camReady || !cam.videoWidth) return null;
+  const W = 960, H = Math.round(W * cam.videoHeight / cam.videoWidth);
+  const c = document.createElement("canvas"); c.width = W; c.height = H;
+  const x = c.getContext("2d");
+  x.save(); x.translate(W, 0); x.scale(-1, 1); x.drawImage(cam, 0, 0, W, H); x.restore();
+  const r = (b) => ({ x: (1 - b.x - b.w) * W, y: b.y * H, w: b.w * W, h: b.h * H });
+  x.lineWidth = 3; x.font = 'bold 18px "SF Mono", Menlo, monospace';
+  for (const d of det.decoys) { const q = r(d); x.setLineDash([8, 6]); x.strokeStyle = "#aab"; x.strokeRect(q.x, q.y, q.w, q.h); x.fillStyle = "#aab"; x.fillText("decoy", q.x, q.y - 6); }
+  x.setLineDash([]);
+  if (box) { const q = r(box); x.strokeStyle = "#ff2d3d"; x.lineWidth = 5; x.strokeRect(q.x, q.y, q.w, q.h); }
+  x.fillStyle = "rgba(0,0,0,.7)"; x.fillRect(0, 0, W, 34); x.fillStyle = "#fff";
+  x.fillText(`${label} · ${fmtClock(new Date(), true)}${box ? "" : " · no box"}`, 12, 24);
+  return c;
+}
+function saveImage(name, canvas) {
+  if (!canvas) return; if (S.session) post("/api/image", { session: S.session, name, png: canvas.toDataURL("image/png") }); }
 function post(url, body) { fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }).catch(() => {}); }
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 

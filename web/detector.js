@@ -26,6 +26,8 @@ export class Detector {
     this.delegates = {};
     this.workers = null;
     this.hits = [];           // raw phone detections, for confirmation
+    this.decoys = [];         // things that look like a phone but aren't (learned while the phone is exiled)
+    this.decoyMode = false; this.learnUntil = 0; this.still = null; this.lastHandOnPhone = false;
   }
 
   // Two Web Workers run in parallel so the screen never stutters and the slow phone
@@ -112,8 +114,9 @@ export class Detector {
       if (this._lastPhoneRun) this.phonePeriod = (this.phonePeriod || 200) * 0.8 + (ts - this._lastPhoneRun) * 0.2;
       this._lastPhoneRun = ts;
     }
+    if (r.phone && !this._acceptHit(r.phone.box, ts)) r.phone = null;
     if (r.phone) {
-      this.hits.push({ ts, score: r.phone.score });
+      this.hits.push({ ts, score: r.phone.score, box: r.phone.box });
       while (this.hits.length && ts - this.hits[0].ts > 3000) this.hits.shift();
       const box = r.phone.box;
       const prev = this.phone && ts - this.phone.seenAt < 400 ? this.phone.box : null;
@@ -193,6 +196,33 @@ export class Detector {
   // --- the judge ------------------------------------------------------------------
   // armed: we're in a focus block and an arrest is allowed.
   // Returns { rule, firstAt } when a rule has held long enough, plus live signals for the HUD.
+  // Is this detection plausibly the phone? Drops tiny/odd boxes, and while the phone is
+  // exiled, drops anything learned as a decoy (seen right after exile, or sitting perfectly
+  // still and untouched).
+  _acceptHit(box, ts) {
+    const area = box.w * box.h, ar = box.w / Math.max(box.h, 1e-6);
+    if (area < CONFIG.minPhoneArea || ar < 0.25 || ar > 4) return false;
+    if (!this.decoyMode) return true;
+    if (ts < this.learnUntil) { this._addDecoy(box); return false; }
+    if (this.isDecoy(box)) return false;
+    const c = center(box);
+    // A real phone arrives in a hand; a decoy just sits there. Only never-touched still things become decoys.
+    if (this.still && dist(c, this.still.c) < 0.025) {
+      if (this.lastHandOnPhone) this.still.touched = true;
+      else if (!this.still.touched && ts - this.still.since >= CONFIG.decoyStillMs) { this._addDecoy(box); this.still = null; return false; }
+    } else this.still = { c, since: ts, touched: this.lastHandOnPhone };
+    return true;
+  }
+  _addDecoy(box) { if (!this.isDecoy(box)) this.decoys.push({ ...box }); }
+  isDecoy(box) { return this.decoys.some((d) => iou(d, box) > 0.3 || dist(center(d), center(box)) < 0.04); }
+
+  // The phone has left the building. From now until release, learn and ignore decoys.
+  startSentence(now) {
+    this.forgetPhone();
+    this.decoyMode = true; this.learnUntil = now + CONFIG.decoyLearnMs; this.still = null;
+  }
+  endSentence() { this.decoyMode = false; this.decoys = []; this.still = null; }
+
   judge(f, armed) {
     const ts = f.ts;
     const phoneBox = f.phone && f.phone.age < 900 ? f.phone.box : null; // grabbing hides the phone; remember it briefly
@@ -208,6 +238,9 @@ export class Detector {
       }));
     }
 
+    // Hands run every frame, the phone detector ~4×/s: mark a touch here so a quick put-down still counts.
+    if (handOnPhone && this.still && phoneBox && dist(center(phoneBox), this.still.c) < 0.05) this.still.touched = true;
+
     // Learn where the phone rests while you're behaving (visible, untouched, eyes up).
     if (visible && !handOnPhone && look < 0.4) {
       const c = center(f.phone.box);
@@ -220,9 +253,11 @@ export class Detector {
     const hitsIn = (ms) => this.hits.filter((h) => ts - h.ts <= ms && h.score >= CONFIG.confirmScore).length;
     const confirmed = hitsIn(CONFIG.confirmWindowMs) >= 2;
     const confirmedStrong = hitsIn(CONFIG.confirmWindowMs + 300) >= 3;
-    // "Using it again": a confirmed phone that you're touching or looking at. A random object
+    // "Using it again": a confirmed phone (not a decoy) in your hand. Eyes alone don't count:
+    // with the laptop below eye level, "looking down" is too noisy to add time to a sentence.
     // lying around (false positive) is never "used", so it can't cause a jailbreak.
-    const using = confirmedStrong && (handOnPhone || look >= CONFIG.lookOn);
+    const using = confirmedStrong && handOnPhone;
+    this.lastHandOnPhone = handOnPhone;
 
     const conds = {
       possession: handOnPhone,
@@ -237,7 +272,8 @@ export class Detector {
       if (!fired && ts - this.since[rule] >= CONFIG.holdMs[rule]) fired = { rule, firstAt: this.since[rule] };
     }
     if (fired) this.since = {};
-    return { fired, signals: { look, visible, confirmed, using, handOnPhone, moved, face: !!f.face, phoneScore: f.phone?.visible ? f.phone.score : 0 } };
+    return { fired, signals: { look, visible, confirmed, using, handOnPhone, moved, face: !!f.face, phoneScore: f.phone?.visible ? f.phone.score : 0,
+      box: f.phone?.box || null, hits: hitsIn(CONFIG.confirmWindowMs + 300), decoys: this.decoys.length } };
   }
 
   forgetRest() { this.rest = null; this.restCandidate = null; this.since = {}; }
@@ -248,4 +284,9 @@ export class Detector {
 function featureVec(face) { return face ? [face.gazeDown, face.pitch / 30, face.blink] : null; }
 function center(b) { return { x: b.x + b.w / 2, y: b.y + b.h / 2 }; }
 function dist(a, b) { return Math.hypot(a.x - b.x, a.y - b.y); }
+function iou(a, b) {
+  const x0 = Math.max(a.x, b.x), y0 = Math.max(a.y, b.y), x1 = Math.min(a.x + a.w, b.x + b.w), y1 = Math.min(a.y + a.h, b.y + b.h);
+  const i = Math.max(0, x1 - x0) * Math.max(0, y1 - y0);
+  return i / (a.w * a.h + b.w * b.h - i || 1);
+}
 function loadCalib() { try { return JSON.parse(localStorage.getItem("fb.calib")); } catch { return null; } }

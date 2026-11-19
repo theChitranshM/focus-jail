@@ -19,8 +19,9 @@ function face(lookDown) { // lookDown 0 = screen, 1 = phone
 }
 
 // Runs a scripted sequence at 30 fps (phone detector every 3rd frame, like the worker).
-function run(script, { armedFrom = 0 } = {}) {
+function run(script, { armedFrom = 0, sentence = false } = {}) {
   const d = new Detector();
+  if (sentence) d.startSentence(1000); // exile happens at t=1000
   d.baseline = { gazeDown: 0.15, pitch: 0, blink: 0.1 };
   let fired = null, t = 1000, frames = 0, lastSignals = null, usingSince = null, jailbreak = false;
   d.onFrame = (f) => {
@@ -91,22 +92,34 @@ console.log("false alarms");
   ok(!disarmed.fired, "nothing fires while not armed (countdown, sentence, grace)");
 }
 
-console.log("jailbreaks (Nov 17 bug: 6 false jailbreaks in 2 min)");
+console.log("jailbreaks (Nov 17: 6 false, Nov 19: 9 false)");
 {
-  const FP = { box: { x: 0.2, y: 0.15, w: 0.05, h: 0.06 }, score: 0.5 };       // a pillow button
-  const stray = run([[8000, { face: face(0.1), hands: [FAR_HAND], phone: (n) => (n % 140 === 0 ? FP : null) }]]);
+  const S = { sentence: true };
+  const FP = { box: { x: 0.2, y: 0.15, w: 0.06, h: 0.08 }, score: 0.6 };   // e.g. the figurine on the shelf
+  const ON_FP = hand(0.23, 0.19);
+  const stray = run([[8000, { face: face(0.1), hands: [FAR_HAND], phone: (n) => (n % 140 === 0 ? FP : null) }]], S);
   ok(!stray.jailbreak, "a stray detection every few seconds does not jailbreak");
-  const decoy = run([[8000, { face: face(0.1), hands: [FAR_HAND], phone: FP }]]);
-  ok(!decoy.jailbreak, "a look-alike object detected constantly, untouched, does not jailbreak");
-  const wave = run([[4000, { face: face(0.1), hands: [hand(0.22, 0.18)], phone: (n) => (n % 140 === 0 ? FP : null) }]]);
-  ok(!wave.jailbreak, "a hand passing over a one-off detection does not jailbreak");
-  const back = run([[3000, { face: face(0.1), hands: [FAR_HAND] }], [1500, { face: face(0.3), hands: [ON_PHONE], phone: { box: PHONE, score: 0.7 } }]]);
+  const decoyLook = run([[10000, { face: face(1), hands: [FAR_HAND], phone: FP }]], S);
+  ok(!decoyLook.jailbreak, "a look-alike detected all the time while you look DOWN at the laptop does not jailbreak");
+  const decoyTouch = run([[10000, { face: face(0.5), hands: [ON_FP], phone: FP }]], S);
+  ok(!decoyTouch.jailbreak, "a look-alike that was there at exile, with your hand over it, does not jailbreak");
+  ok(decoyTouch.d.decoys.length >= 1, "…and it was learned as a decoy");
+  const late = run([[4000, { face: face(0.1), hands: [FAR_HAND] }], [8000, { face: face(1), hands: [FAR_HAND], phone: FP }]], S);
+  ok(!late.jailbreak, "a look-alike that appears later and sits still, untouched, does not jailbreak");
+  const tiny = run([[4000, { face: face(0.1) }], [3000, { face: face(0.3), hands: [hand(0.51, 0.51)], phone: { box: { x: 0.5, y: 0.5, w: 0.03, h: 0.03 }, score: 0.9 } }]], S);
+  ok(!tiny.jailbreak, "a detection too small to be a phone is ignored");
+  const back = run([[4000, { face: face(0.1), hands: [FAR_HAND] }], [1500, { face: face(0.3), hands: [ON_PHONE], phone: { box: PHONE, score: 0.7 } }]], S);
   ok(back.jailbreak, "the real phone back in your hand does jailbreak");
-  const scroll = run([[3000, { face: face(0.1) }], [1500, { face: face(1), phone: { box: { x: 0.45, y: 0.45, w: 0.12, h: 0.2 }, score: 0.75 } }]]);
-  ok(scroll.jailbreak, "the real phone held up and looked at does jailbreak");
-  const d = new Detector(); d.phone = { box: PHONE, score: 0.8, seenAt: 0 }; d.hits = [{ ts: 0, score: 0.8 }];
-  d.forgetPhone();
-  ok(d.phone === null && d.hits.length === 0, "exile forgets the phone's last box");
+  const putDown = run([[4000, { face: face(0.1), hands: [FAR_HAND] }],
+                       [250, { face: face(0.1), hands: [ON_PHONE], phone: { box: PHONE, score: 0.7 } }],   // brought back, set down fast
+                       [5000, { face: face(0.1), hands: [FAR_HAND], phone: { box: PHONE, score: 0.7 } }],  // sits there
+                       [1500, { face: face(0.3), hands: [ON_PHONE], phone: { box: PHONE, score: 0.7 } }]], S); // picked up
+  ok(putDown.jailbreak, "the real phone set down, then picked up, still jailbreaks (not mistaken for a decoy)");
+  const UP = { x: 0.45, y: 0.45, w: 0.12, h: 0.2 };
+  const scroll = run([[4000, { face: face(0.1) }], [1500, { face: face(1), hands: [hand(0.5, 0.6)], phone: { box: UP, score: 0.75 } }]], S);
+  ok(scroll.jailbreak, "the real phone held up and scrolled does jailbreak");
+  const d = new Detector(); d.startSentence(0); d.decoys = [FP.box]; d.endSentence();
+  ok(d.decoys.length === 0 && !d.decoyMode, "release forgets decoys (the phone is allowed back)");
 }
 
 console.log("calibration");

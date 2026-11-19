@@ -28,7 +28,7 @@ Most "AI yells at me when I touch my phone" builds play a sound when a phone sho
   | Lifted it off its resting spot | Moving a phone without a permit |
   | Stared into your lap for 1.6 s+ | Suspicious downward glancing |
 
-- **Sentence and jailbreak.** Exile is a real timer, 25 minutes by default (one pomodoro). If you start using the phone again early (it's confirmed on camera *and* in your hand or in your eyeline), the sentence gets +20%.
+- **Sentence and jailbreak.** Exile is a real timer, 25 minutes by default (one pomodoro). If the phone comes back into your hand early, the sentence gets +20%.
 - **Case file.** A 4:5 card at the end of the session with arrests, clean focus time, longest streak, fastest reaction, the mugshots and a verdict.
 
 ## How detection works
@@ -42,7 +42,8 @@ Three signals feed one judge. Each signal comes from a MediaPipe model, running 
 | **Hands** | Hand Landmarker (21 points × 2 hands) | whether a fingertip is inside the phone's box |
 
 - **Hold windows filter out glitches.** A rule has to stay true for 120–220 ms (1.6 s for the lap stare) before it fires, so a one-frame glitch can't arrest you.
-- **One detection is never enough.** A stray hit (a pillow button, a dark rectangle) can't arrest you or cause a jailbreak: the phone has to be detected 2–3 times in about a second, and a jailbreak also needs your hand on it or your eyes on it.
+- **One detection is never enough.** A stray hit (a pillow button, a dark rectangle) can't arrest you or cause a jailbreak: the phone has to be detected 2–3 times in about a second, and a jailbreak also needs it in your hand.
+- **Decoys are learned.** Right after exile the phone is known to be gone, so anything the detector still calls a phone in the next 3 seconds (a figurine, a mouse, a dark rectangle) is a decoy and is ignored for the rest of the sentence. So is any "phone" that sits perfectly still for 2 s without ever being touched. Boxes too small to be a phone are dropped.
 - **Grabbing the phone still counts.** Your hand often hides the phone from the object detector as you grab it, so the judge keeps the last-known box for about 1 s.
 - **Your "screen face" is learned automatically.** The 3-2-1 countdown samples how your eyes look while you look at the screen.
 - **Calibration is optional.** Press **C** once to teach it your "phone face" too. It's saved in the browser.
@@ -101,6 +102,7 @@ Tune thresholds in [`web/config.js`](web/config.js). Turn off `stareRule` if you
 Every session writes to `logs/<session>/`:
 - `events.jsonl` and `events.csv`: timestamped to 0.1 s, with the detection signal and reaction time
 - `mugshot-01.png`, …: one per arrest
+- `arrest-01-evidence.png`, `jailbreak-01-evidence.png`, …: the camera frame at the moment of each call, with the detected box in red and learned decoys dashed. Jailbreak rows in `events.jsonl` also carry a `diag` field (box, score, hits, hand on phone, decoys).
 - `casefile.png`
 
 The on-screen log shows the same events. Each arrest is tagged `cam 184ms` or `key`, so the record always says which path fired.

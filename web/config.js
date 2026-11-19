@@ -16,6 +16,9 @@ export const CONFIG = {
   confirmScore: 0.45,         // a detection only counts toward confirmation above this
   confirmWindowMs: 1200,      // 2 hits in this window = confirmed phone; 3 hits (+300 ms) = strong
   jailbreakHoldMs: 300,       // "using it again" must hold this long during a sentence
+  minPhoneArea: 0.0025,       // detections smaller than this (fraction of frame) are never a phone
+  decoyLearnMs: 3000,         // after exile, anything still detected as a phone for this long is a decoy
+  decoyStillMs: 2000,         // during a sentence, a "phone" that sits perfectly still and untouched this long is a decoy
   phoneMoveFrac: 0.07,        // how far (fraction of frame) counts as "lifted"
   phoneBoxPad: 0.18,          // grow the phone box by this much for the hand test
   lookOn: 0.62,               // look score (0 = screen, 1 = phone) that counts as "eyes on phone"
